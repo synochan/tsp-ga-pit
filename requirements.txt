@@ -1,0 +1,9 @@
+streamlit>=1.36
+streamlit-folium>=0.20
+folium>=0.17
+networkx>=3.2
+numpy>=1.26
+pandas>=2.2
+matplotlib>=3.8
+requests>=2.32
+pytest>=8.2
