@@ -549,7 +549,13 @@ with tabs[2]:
             st.pyplot(graph_fig)
             graph_buffer = BytesIO()
             graph_fig.savefig(graph_buffer, format="png", dpi=180, bbox_inches="tight")
-            st.download_button("Download weighted graph PNG", graph_buffer.getvalue(), "weighted_graph.png", "image/png")
+            st.download_button(
+                "Download weighted graph PNG",
+                graph_buffer.getvalue(),
+                "weighted_graph.png",
+                "image/png",
+                key="weighted_graph_png_preview",
+            )
             st.write("Best-route edge-by-edge recalculation")
             st.dataframe(pd.DataFrame(route_edge_check), use_container_width=True)
         st.pyplot(plot_convergence(result.history))
@@ -601,7 +607,13 @@ with tabs[3]:
         graph_fig = plot_weighted_graph([start] + selected, matrix)
         graph_buffer = BytesIO()
         graph_fig.savefig(graph_buffer, format="png", dpi=180, bbox_inches="tight")
-        st.download_button("Download weighted graph PNG", graph_buffer.getvalue(), "weighted_graph.png", "image/png")
+        st.download_button(
+            "Download weighted graph PNG",
+            graph_buffer.getvalue(),
+            "weighted_graph.png",
+            "image/png",
+            key="weighted_graph_png_export",
+        )
         history_df = pd.DataFrame({"generation": range(len(result.history)), "best_distance_km": result.history})
         st.download_button("Download convergence CSV", history_df.to_csv(index=False), "convergence_history.csv", "text/csv")
         summary = f"""TSP Genetic Algorithm Route Summary
