@@ -33,11 +33,8 @@ def validate_distance_matrix(
     start_id: str,
     destination_ids: list[str],
     matrix: dict[tuple[str, str], RouteMeasurement],
-    end_id: str | None = None,
 ) -> None:
     nodes = [start_id] + destination_ids
-    if end_id and end_id not in nodes:
-        nodes.append(end_id)
     for from_id in nodes:
         for to_id in nodes:
             if from_id == to_id:
@@ -53,9 +50,8 @@ def route_distance(
     chromosome: list[str],
     start_id: str,
     matrix: dict[tuple[str, str], RouteMeasurement],
-    end_id: str | None = None,
 ) -> float:
-    route = [start_id] + chromosome + [end_id or start_id]
+    route = [start_id] + chromosome + [start_id]
     total = 0.0
     for from_id, to_id in zip(route, route[1:]):
         measurement = matrix.get((from_id, to_id))
@@ -113,10 +109,9 @@ def run_genetic_algorithm(
     destination_ids: list[str],
     matrix: dict[tuple[str, str], RouteMeasurement],
     params: GAParameters,
-    end_id: str | None = None,
 ) -> GAResult:
     validate_parameters(params, len(destination_ids))
-    validate_distance_matrix(start_id, destination_ids, matrix, end_id)
+    validate_distance_matrix(start_id, destination_ids, matrix)
     rng = random.Random(params.random_seed)
     started = time.perf_counter()
     population = generate_initial_population(destination_ids, params.population_size, rng)
@@ -125,7 +120,7 @@ def run_genetic_algorithm(
     history: list[float] = []
 
     for _ in range(params.generations + 1):
-        distances = [route_distance(individual, start_id, matrix, end_id) for individual in population]
+        distances = [route_distance(individual, start_id, matrix) for individual in population]
         ranked = sorted(zip(distances, population), key=lambda item: item[0])
         if ranked[0][0] < best_distance:
             best_distance = ranked[0][0]
@@ -146,7 +141,7 @@ def run_genetic_algorithm(
 
     assert best_route is not None
     return GAResult(
-        best_route=[start_id] + best_route + [end_id or start_id],
+        best_route=[start_id] + best_route + [start_id],
         best_distance=best_distance,
         history=history,
         generations_run=params.generations,
@@ -159,9 +154,8 @@ def nearest_neighbor(
     start_id: str,
     destination_ids: list[str],
     matrix: dict[tuple[str, str], RouteMeasurement],
-    end_id: str | None = None,
 ) -> tuple[list[str], float]:
-    validate_distance_matrix(start_id, destination_ids, matrix, end_id)
+    validate_distance_matrix(start_id, destination_ids, matrix)
     unvisited = set(destination_ids)
     route = [start_id]
     current = start_id
@@ -172,9 +166,8 @@ def nearest_neighbor(
         route.append(next_id)
         unvisited.remove(next_id)
         current = next_id
-    final_id = end_id or start_id
-    total += matrix[(current, final_id)].distance_km
-    route.append(final_id)
+    total += matrix[(current, start_id)].distance_km
+    route.append(start_id)
     return route, total
 
 
@@ -183,16 +176,15 @@ def brute_force_exact(
     destination_ids: list[str],
     matrix: dict[tuple[str, str], RouteMeasurement],
     max_destinations: int = 8,
-    end_id: str | None = None,
 ) -> tuple[list[str], float] | None:
     if len(destination_ids) > max_destinations:
         return None
-    validate_distance_matrix(start_id, destination_ids, matrix, end_id)
+    validate_distance_matrix(start_id, destination_ids, matrix)
     best_route: list[str] | None = None
     best_distance = math.inf
     for permutation in itertools.permutations(destination_ids):
-        distance = route_distance(list(permutation), start_id, matrix, end_id)
+        distance = route_distance(list(permutation), start_id, matrix)
         if distance < best_distance:
             best_distance = distance
-            best_route = [start_id] + list(permutation) + [end_id or start_id]
+            best_route = [start_id] + list(permutation) + [start_id]
     return (best_route or [], best_distance)

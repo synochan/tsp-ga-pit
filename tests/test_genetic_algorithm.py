@@ -4,9 +4,11 @@ import pytest
 
 from genetic_algorithm import (
     GeneticAlgorithmError,
+    brute_force_exact,
     generate_initial_population,
     nearest_neighbor,
     order_crossover,
+    route_distance,
     run_genetic_algorithm,
     swap_mutation,
     tournament_selection,
@@ -109,20 +111,31 @@ def test_nearest_neighbor_returns_closed_tour():
     assert distance > 0
 
 
-def test_ga_supports_fixed_end_route():
+def test_route_distance_includes_return_to_start_leg():
+    matrix = {
+        ("START", "A"): RouteMeasurement("START", "A", 2, 1, "mock", utc_now_iso(), "mock", ""),
+        ("A", "B"): RouteMeasurement("A", "B", 3, 1, "mock", utc_now_iso(), "mock", ""),
+        ("B", "START"): RouteMeasurement("B", "START", 5, 1, "mock", utc_now_iso(), "mock", ""),
+    }
+    assert route_distance(["A", "B"], "START", matrix) == 10
+
+
+def test_ga_returns_closed_tour():
     _, destinations, matrix = fixture_problem()
     ids = [loc.location_id for loc in destinations[:3]]
-    result = run_genetic_algorithm("START", ids, matrix, GAParameters(population_size=20, generations=20), end_id="D")
+    result = run_genetic_algorithm("START", ids, matrix, GAParameters(population_size=20, generations=20))
     assert result.best_route[0] == "START"
-    assert result.best_route[-1] == "D"
+    assert result.best_route[-1] == "START"
     assert set(result.best_route[1:-1]) == set(ids)
 
 
-def test_nearest_neighbor_supports_fixed_end_route():
+def test_brute_force_exact_returns_closed_tour():
     _, destinations, matrix = fixture_problem()
     ids = [loc.location_id for loc in destinations[:2]]
-    route, distance = nearest_neighbor("START", ids, matrix, end_id="D")
+    result = brute_force_exact("START", ids, matrix)
+    assert result is not None
+    route, distance = result
     assert route[0] == "START"
-    assert route[-1] == "D"
+    assert route[-1] == "START"
     assert set(route[1:-1]) == set(ids)
     assert distance > 0

@@ -16,7 +16,7 @@ from geocoding import GeocodingError, NominatimGeocoder, discover_places_by_cate
 from graph_visualization import plot_convergence
 from map_visualization import build_route_map
 from models import GAParameters, Location, utc_now_iso
-from route_validation import validate_fixed_endpoint_route
+from route_validation import validate_round_trip
 from routing_client import OSRMRoutingClient, RoutingError
 
 
@@ -106,31 +106,24 @@ def _set_start(location: Location) -> None:
     st.session_state.pop("last_result", None)
 
 
-def _set_end(location: Location) -> None:
-    st.session_state.end = location
-    st.session_state.pop("last_matrix", None)
-    st.session_state.pop("last_result", None)
-
-
 def _selected_locations() -> list[Location]:
     selected_ids = st.session_state.get("selected_ids", [])
     return [loc for loc in st.session_state.locations if loc.location_id in selected_ids]
 
 
-def _ordered_locations(start: Location, end: Location, destinations: list[Location], route: list[str]) -> list[Location]:
+def _ordered_locations(start: Location, destinations: list[Location], route: list[str]) -> list[Location]:
     by_id = {"START": start}
-    by_id["END"] = end
     by_id.update({location.location_id: location for location in destinations})
     return [by_id[location_id] for location_id in route if location_id in by_id]
 
 
-def _create_report(result, validation, selected, start, end, matrix, baseline, exact, cached):
+def _create_report(result, validation, selected, start, matrix, baseline, exact, cached):
     return {
         "generated_at": utc_now_iso(),
         "data_mode": "REAL_OSM_OSRM_DATA",
+        "route_model": "closed_tour_start_to_destinations_to_start",
         "routing_cache_hit": cached,
         "start": start.as_dict(),
-        "end": end.as_dict(),
         "selected_destinations": [loc.as_dict() for loc in selected],
         "ga_parameters": result.parameters.__dict__,
         "best_found_route": result.best_route,
@@ -145,7 +138,7 @@ def _create_report(result, validation, selected, start, end, matrix, baseline, e
 
 st.set_page_config(page_title="Cagayan de Oro TSP GA", layout="wide")
 st.title("Real-Data TSP Route Optimizer for Cagayan de Oro")
-st.caption("Pick START and END, select at least two GA destinations, then let the Genetic Algorithm choose the visit order.")
+st.caption("Pick one START, select at least two GA destinations, then let the Genetic Algorithm build a closed tour that returns to START.")
 
 if "locations" not in st.session_state:
     st.session_state.locations = _load_real_locations()
@@ -153,8 +146,10 @@ if "selected_ids" not in st.session_state:
     st.session_state.selected_ids = []
 if "start" not in st.session_state:
     st.session_state.start = None
-if "end" not in st.session_state:
-    st.session_state.end = None
+st.session_state.pop("end", None)
+if "last_result" in st.session_state and len(st.session_state.last_result) != 10:
+    st.session_state.pop("last_result", None)
+    st.session_state.pop("last_matrix", None)
 
 with st.sidebar:
     st.header("Real Routing")
@@ -172,39 +167,33 @@ with st.sidebar:
     random_seed = st.number_input("Random seed", 0, 999999, 42)
 
 start_done = st.session_state.start is not None
-end_done = st.session_state.end is not None
 destinations_done = len(st.session_state.locations) >= 2
 selection_done = len(st.session_state.selected_ids) >= 2
-st.progress((int(start_done) + int(end_done) + int(destinations_done) + int(selection_done)) / 4)
+st.progress((int(start_done) + int(destinations_done) + int(selection_done)) / 3)
 st.write(
     f"Workflow: {'START selected' if start_done else 'choose START'} -> "
-    f"{'END selected' if end_done else 'choose END'} -> "
-    f"{'GA destinations selected' if selection_done else 'select at least 2 GA destinations'}"
+    f"{'real destinations loaded' if destinations_done else 'load real destinations'} -> "
+    f"{'GA destinations selected' if selection_done else 'select at least 2 GA destinations'} -> "
+    "return to START"
 )
 
-tabs = st.tabs(["1. Start & End", "2. GA Destinations", "3. Run GA", "4. Export"])
+tabs = st.tabs(["1. Start", "2. GA Destinations", "3. Run GA", "4. Export"])
 
 with tabs[0]:
-    st.subheader("Choose START And END")
-    st.info("Pick what your next map click should set, then click inside the blue Cagayan de Oro study box.")
-    click_target = st.radio("Next map click sets", ["START", "END"], horizontal=True)
+    st.subheader("Choose START")
+    st.info("Click inside the blue Cagayan de Oro study box, search a place, or enter coordinates. The final route returns to this same START.")
     start_map = build_route_map(
         st.session_state.start,
         _selected_locations(),
-        end=st.session_state.end,
     )
-    map_event = st_folium(start_map, height=480, width=None, key="start_end_map")
+    map_event = st_folium(start_map, height=480, width=None, key="start_map")
     if map_event and map_event.get("last_clicked"):
         clicked = map_event["last_clicked"]
         try:
             lat, lon = validate_coordinate(clicked["lat"], clicked["lng"])
             if DEFAULT_STUDY_AREA.contains(lat, lon):
-                if click_target == "START":
-                    _set_start(Location("START", "Selected start point", "Map click", lat, lon, "User map click"))
-                    st.success(f"START selected at {lat:.6f}, {lon:.6f}. Now select END.")
-                else:
-                    _set_end(Location("END", "Selected end point", "Map click", lat, lon, "User map click"))
-                    st.success(f"END selected at {lat:.6f}, {lon:.6f}. Next: select GA destinations.")
+                _set_start(Location("START", "Selected start point", "Map click", lat, lon, "User map click"))
+                st.success(f"START selected at {lat:.6f}, {lon:.6f}. Next: select GA destinations.")
             else:
                 st.error("That point is outside the configured study area. Click inside the blue box.")
         except Exception as exc:
@@ -227,65 +216,40 @@ with tabs[0]:
                 except Exception as exc:
                     st.error(str(exc))
     with col2:
-        with st.form("coordinate_end"):
-            st.write("END coordinates")
-            end_lat = st.number_input("End latitude", value=DEFAULT_STUDY_AREA.center_lat, format="%.6f")
-            end_lon = st.number_input("End longitude", value=DEFAULT_STUDY_AREA.center_lon, format="%.6f")
-            if st.form_submit_button("Use As END"):
-                try:
-                    lat_f, lon_f = validate_coordinate(end_lat, end_lon)
-                    if DEFAULT_STUDY_AREA.contains(lat_f, lon_f):
-                        _set_end(Location("END", "Selected end point", "Manual coordinates", lat_f, lon_f, "User input"))
-                        st.success("END selected.")
-                    else:
-                        st.error("Coordinates are outside the configured study area.")
-                except Exception as exc:
-                    st.error(str(exc))
+        st.write("Current START")
+        if st.session_state.start:
+            start = st.session_state.start
+            st.success(f"{start.location_name} ({start.latitude:.6f}, {start.longitude:.6f})")
+            if st.button("Clear START"):
+                st.session_state.start = None
+                st.session_state.pop("last_matrix", None)
+                st.session_state.pop("last_result", None)
+                st.rerun()
+        else:
+            st.warning("No START selected yet.")
 
     with st.form("geocode_point"):
-        st.write("Or search a place for START/END")
+        st.write("Or search a place for START")
         query = st.text_input("Example: Cogon Market, Cagayan de Oro")
-        search_target = st.radio("Use search result for", ["START", "END"], horizontal=True)
         submitted = st.form_submit_button("Search Place")
     if submitted and query:
         try:
             st.session_state.geocode_matches = NominatimGeocoder(DEFAULT_DISCOVERY).search(query)
-            st.session_state.geocode_target = search_target
         except GeocodingError as exc:
             st.error(str(exc))
     matches = st.session_state.get("geocode_matches", [])
     if matches:
         chosen = st.selectbox("Confirm result", matches, format_func=lambda item: f"{item.location_name} - {item.address_or_area}")
-        target = st.session_state.get("geocode_target", "START")
-        if st.button(f"Use Search Result As {target}"):
+        if st.button("Use Search Result As START"):
             if DEFAULT_STUDY_AREA.contains(chosen.latitude, chosen.longitude):
-                if target == "START":
-                    _set_start(Location("START", chosen.location_name, chosen.address_or_area, chosen.latitude, chosen.longitude, chosen.source_name, chosen.source_url))
-                else:
-                    _set_end(Location("END", chosen.location_name, chosen.address_or_area, chosen.latitude, chosen.longitude, chosen.source_name, chosen.source_url))
-                st.success(f"{target} selected.")
+                _set_start(Location("START", chosen.location_name, chosen.address_or_area, chosen.latitude, chosen.longitude, chosen.source_name, chosen.source_url))
+                st.success("START selected.")
             else:
                 st.error("Selected result is outside the configured study area.")
 
-    status_cols = st.columns(2)
-    with status_cols[0]:
-        if st.session_state.start:
-            start = st.session_state.start
-            st.success(f"START: {start.location_name} ({start.latitude:.6f}, {start.longitude:.6f})")
-            if st.button("Clear START"):
-                st.session_state.start = None
-                st.rerun()
-    with status_cols[1]:
-        if st.session_state.end:
-            end = st.session_state.end
-            st.success(f"END: {end.location_name} ({end.latitude:.6f}, {end.longitude:.6f})")
-            if st.button("Clear END"):
-                st.session_state.end = None
-                st.rerun()
-
 with tabs[1]:
     st.subheader("Select GA Destinations")
-    st.info("These blue markers are the chromosome genes. Select at least two real places so the Genetic Algorithm can optimize their visit order between START and END.")
+    st.info("These blue markers are the chromosome genes. Select at least two real places so the Genetic Algorithm can optimize the closed tour from START back to START.")
     center_source = st.radio("Discovery center", ["Use START location", "Use Cagayan de Oro default center"], horizontal=True)
     if center_source == "Use START location" and st.session_state.start:
         center_lat = st.session_state.start.latitude
@@ -444,50 +408,47 @@ with tabs[2]:
     st.subheader("Calculate Road Distances And Run The Genetic Algorithm")
     selected = _selected_locations()
     start = st.session_state.start
-    end = st.session_state.end
     if not start:
         st.warning("Step 1 is not complete: choose a START first.")
-    elif not end:
-        st.warning("Step 1 is not complete: choose an END point too.")
     elif len(selected) < 2:
         st.warning("Step 2 is not complete: select at least two GA destinations.")
     else:
-        node_count = len(selected) + 2
+        node_count = len(selected) + 1
         measurement_count = node_count * (node_count - 1)
-        st.info(f"Ready. The GA will optimize {len(selected)} destination stops between START and END using {measurement_count} directed road-distance measurements.")
+        st.info(f"Ready. The GA will optimize {len(selected)} destination stops and return to START using {measurement_count} directed road-distance measurements.")
         if st.button("Run Genetic Algorithm", type="primary"):
             try:
                 params = GAParameters(int(population_size), int(generations), crossover_probability, mutation_probability, int(tournament_size), int(elitism_count), int(random_seed))
                 routing_client = OSRMRoutingClient(RoutingSettings(base_url=osrm_url))
                 provider = OSRMDistanceProvider(routing_client)
-                route_nodes = [start] + selected + [end]
+                route_nodes = [start] + selected
                 with st.spinner("Getting real road distances from OSRM..."):
                     matrix, cache_hit = provider.build_matrix(route_nodes)
                 destination_ids = [loc.location_id for loc in selected]
                 with st.spinner("Running nearest-neighbor baseline and Genetic Algorithm..."):
                     baseline_started = time.perf_counter()
-                    baseline = nearest_neighbor("START", destination_ids, matrix, end_id="END")
+                    baseline = nearest_neighbor("START", destination_ids, matrix)
                     baseline_runtime = time.perf_counter() - baseline_started
-                    result = run_genetic_algorithm("START", destination_ids, matrix, params, end_id="END")
-                    exact = brute_force_exact("START", destination_ids, matrix, 8, end_id="END")
-                    validation = validate_fixed_endpoint_route(result.best_route, "START", "END", destination_ids, matrix, result.best_distance)
+                    result = run_genetic_algorithm("START", destination_ids, matrix, params)
+                    exact = brute_force_exact("START", destination_ids, matrix, 8)
+                    validation = validate_round_trip(result.best_route, "START", destination_ids, matrix, result.best_distance)
                 road_geometries = None
                 geometry_warning = ""
                 if validation.is_valid:
                     try:
                         with st.spinner("Fetching road-following geometry and animation path for the map..."):
-                            road_geometries = routing_client.route_geometry(_ordered_locations(start, end, selected, result.best_route))
+                            road_geometries = routing_client.route_geometry(_ordered_locations(start, selected, result.best_route))
                     except RoutingError as exc:
                         geometry_warning = f"Road geometry could not be fetched: {exc}. The map uses a dashed illustrative connection instead."
                 st.session_state.last_matrix = matrix
-                st.session_state.last_result = (result, validation, baseline, baseline_runtime, exact, selected, start, end, cache_hit, road_geometries, geometry_warning)
+                st.session_state.last_result = (result, validation, baseline, baseline_runtime, exact, selected, start, cache_hit, road_geometries, geometry_warning)
             except Exception as exc:
                 st.error(str(exc))
 
     if "last_result" in st.session_state:
-        result, validation, baseline, baseline_runtime, exact, selected, start, end, cache_hit, road_geometries, geometry_warning = st.session_state.last_result
+        result, validation, baseline, baseline_runtime, exact, selected, start, cache_hit, road_geometries, geometry_warning = st.session_state.last_result
         if validation.is_valid:
-            st.success("Route validation passed: the route starts at START, visits selected stops once, and ends at END.")
+            st.success("Route validation passed: the route starts at START, visits selected stops once, and returns to START.")
         else:
             st.error("Route validation failed: " + "; ".join(validation.errors))
         metrics = st.columns(4)
@@ -507,7 +468,6 @@ with tabs[2]:
         route_map = build_route_map(
             start,
             selected,
-            end=end,
             ordered_route=result.best_route,
             road_geometries=road_geometries,
             illustrative_fallback=road_geometries is None,
@@ -520,19 +480,20 @@ with tabs[3]:
     if "last_result" not in st.session_state:
         st.info("Run the Genetic Algorithm before exporting results.")
     else:
-        result, validation, baseline, _, exact, selected, start, end, cache_hit, _, _ = st.session_state.last_result
+        result, validation, baseline, _, exact, selected, start, cache_hit, _, _ = st.session_state.last_result
         matrix = st.session_state.last_matrix
-        report = _create_report(result, validation, selected, start, end, matrix, baseline, exact, cache_hit)
+        report = _create_report(result, validation, selected, start, matrix, baseline, exact, cache_hit)
         st.download_button("Download route report JSON", json.dumps(report, indent=2), "route_report.json", "application/json")
         ordered = pd.DataFrame({"visit_order": range(len(result.best_route)), "location_id": result.best_route})
         st.download_button("Download ordered route CSV", ordered.to_csv(index=False), "ordered_route.csv", "text/csv")
-        st.download_button("Download selected locations CSV", _location_df([start] + selected + [end]).to_csv(index=False), "selected_locations.csv", "text/csv")
+        st.download_button("Download selected locations CSV", _location_df([start] + selected).to_csv(index=False), "selected_locations.csv", "text/csv")
         matrix_df = pd.DataFrame([measurement.as_dict() for measurement in matrix.values()])
         st.download_button("Download distance matrix CSV", matrix_df.to_csv(index=False), "distance_matrix.csv", "text/csv")
         history_df = pd.DataFrame({"generation": range(len(result.history)), "best_distance_km": result.history})
         st.download_button("Download convergence CSV", history_df.to_csv(index=False), "convergence_history.csv", "text/csv")
         summary = f"""TSP Genetic Algorithm Route Summary
 Data mode: REAL_OSM_OSRM_DATA
+Route model: closed tour, START -> selected destinations -> START
 Route: {' -> '.join(result.best_route)}
 Best-found distance: {result.best_distance:.3f} km
 Nearest-neighbor distance: {baseline[1]:.3f} km
@@ -541,7 +502,7 @@ Generated at: {utc_now_iso()}
 """
         st.download_button("Download plain-text summary", summary, "route_summary.txt", "text/plain")
         if st.button("Save exports to output folder"):
-            save_locations_csv([start] + selected + [end], OUTPUT_DIR / "selected_locations.csv")
+            save_locations_csv([start] + selected, OUTPUT_DIR / "selected_locations.csv")
             save_distance_matrix_csv(matrix, OUTPUT_DIR / "distance_matrix.csv")
             (OUTPUT_DIR / "route_report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
             (OUTPUT_DIR / "route_summary.txt").write_text(summary, encoding="utf-8")

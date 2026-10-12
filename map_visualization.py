@@ -10,7 +10,6 @@ from models import Location
 def build_route_map(
     start: Location | None,
     destinations: list[Location],
-    end: Location | None = None,
     ordered_route: list[str] | None = None,
     road_geometries: list[list[tuple[float, float]]] | None = None,
     illustrative_fallback: bool = False,
@@ -34,18 +33,8 @@ def build_route_map(
             tooltip="START",
             icon=folium.Icon(color="green", icon="play"),
         ).add_to(fmap)
-    if end:
-        by_id[end.location_id] = end
-        folium.Marker(
-            [end.latitude, end.longitude],
-            popup=f"END: {end.location_name}",
-            tooltip="END",
-            icon=folium.Icon(color="red", icon="stop"),
-        ).add_to(fmap)
     for location in destinations:
         if start and location.location_id == start.location_id:
-            continue
-        if end and location.location_id == end.location_id:
             continue
         folium.Marker(
             [location.latitude, location.longitude],

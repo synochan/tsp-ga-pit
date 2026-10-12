@@ -1,12 +1,12 @@
-# Flexible-Start Delivery Route Optimization Using a Genetic Algorithm
+# Closed-Tour TSP Route Optimization Using a Genetic Algorithm
 
-This project is a complete Python application for a university Genetic Algorithm route-optimization assignment in Cagayan de Oro City, Philippines. It lets a user choose a temporary starting point, choose a temporary end point, select real GA destinations, build a directed road-distance matrix, run a Genetic Algorithm to choose the visit order, compare it with nearest neighbor, validate the route, visualize it with an animated path, and export reports.
+This project is a complete Python application for a university Genetic Algorithm route-optimization assignment in Cagayan de Oro City, Philippines. It lets a user choose one temporary starting point, select real GA destinations, build a directed road-distance matrix, run a Genetic Algorithm to choose the visit order, compare it with nearest neighbor, validate the route, visualize it with an animated path, and export reports.
 
-The start and end are fixed during one optimization run. The chromosome contains only selected destination IDs, for example `[C, A, D, B]`, and the complete route is `START -> C -> A -> D -> B -> END`. At least two destinations are required so the Genetic Algorithm has a meaningful ordering problem.
+The start is fixed during one optimization run. The chromosome contains only selected destination IDs, for example `[C, A, D, B]`, and the complete closed tour is `START -> C -> A -> D -> B -> START`. At least two destinations are required so the Genetic Algorithm has a meaningful ordering problem.
 
 ## Why This Is A TSP
 
-The route must start at one location, visit every selected destination exactly once, and end at the selected end point while minimizing total distance. This is a fixed-endpoint route-ordering variant of the Traveling Salesperson Problem. Road distances can be asymmetric because one-way roads and routing restrictions may make A-to-B different from B-to-A.
+The route must start at one location, visit every selected destination exactly once, and return to the same start while minimizing total distance. This is the classic closed-tour Traveling Salesperson Problem. Road distances can be asymmetric because one-way roads and routing restrictions may make A-to-B different from B-to-A.
 
 ## Why Use A Genetic Algorithm
 
@@ -15,7 +15,7 @@ Exact enumeration grows factorially as destinations increase. A Genetic Algorith
 ## Algorithm
 
 - Chromosome: a permutation of selected destination IDs only.
-- Fitness: complete route distance from `START` through the chromosome and into `END`.
+- Fitness: complete route distance from `START` through the chromosome and back to `START`.
 - Initial population: random valid permutations.
 - Selection: tournament selection.
 - Crossover: order crossover, preserving each destination exactly once.
@@ -88,7 +88,7 @@ Tests do not require internet access. Routing-client tests use mocked responses.
 ## Real-World Dataset Workflow
 
 1. Open the Streamlit app.
-2. In `1. Start & End`, choose whether your next map click sets `START` or `END`, then click the map. You can also search or enter coordinates.
+2. In `1. Start`, click the map to set `START`. You can also search or enter coordinates.
 3. In `2. GA Destinations`, click `Find Real Destinations From OpenStreetMap`.
 4. Review the loaded candidates and select at least two GA destinations.
 5. In `3. Run GA`, click `Run Genetic Algorithm`.
@@ -102,7 +102,7 @@ Do not treat OpenStreetMap POIs as independently verified real-world business re
 The final route is independently checked to confirm:
 
 - it starts at `START`;
-- it ends at `END`;
+- it returns to `START`;
 - every required destination appears exactly once;
 - no unselected destination appears;
 - every edge has a finite non-negative distance;
