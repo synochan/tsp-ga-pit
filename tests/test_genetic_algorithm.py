@@ -192,3 +192,29 @@ def test_brute_force_exact_finds_expected_small_optimum():
     route, distance = brute_force_exact("START", ids, matrix)
     assert route == ["START", "A", "B", "C", "START"]
     assert distance == 4
+
+
+def test_ga_nearest_neighbor_and_exact_use_same_closed_tour_objective():
+    _, destinations, matrix = fixture_problem()
+    ids = [loc.location_id for loc in destinations[:3]]
+    params = GAParameters(population_size=30, generations=20, random_seed=11)
+
+    ga = run_genetic_algorithm("START", ids, matrix, params)
+    nearest_route, nearest_distance = nearest_neighbor("START", ids, matrix)
+    exact = brute_force_exact("START", ids, matrix)
+
+    assert exact is not None
+    for route, distance in [(ga.best_route, ga.best_distance), (nearest_route, nearest_distance), exact]:
+        assert route[0] == "START"
+        assert route[-1] == "START"
+        assert set(route[1:-1]) == set(ids)
+        assert validate_round_trip(route, "START", ids, matrix, distance).is_valid
+
+
+def test_route_distance_rejects_negative_return_leg():
+    matrix = {
+        ("START", "A"): RouteMeasurement("START", "A", 2, 1, "mock", utc_now_iso(), "mock", ""),
+        ("A", "START"): RouteMeasurement("A", "START", -1, 1, "mock", utc_now_iso(), "mock", ""),
+    }
+    with pytest.raises(GeneticAlgorithmError):
+        route_distance(["A"], "START", matrix)

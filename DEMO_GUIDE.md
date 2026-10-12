@@ -10,7 +10,7 @@ Use these talking points for a 10-15 minute recorded demonstration. Do not prese
 6. Show the GA destination selector and explain that selected destinations become the chromosome genes.
 7. Open the discovery tab and explain that Overpass can retrieve source-reported OpenStreetMap POIs by category and radius.
 8. Explain that OpenStreetMap POIs are not independently verified and should be reviewed before academic use.
-9. Select at least two GA destinations so the algorithm has a meaningful ordering problem.
+9. Select one or more GA destinations. Use two or more if you want a visibly meaningful ordering problem for the demonstration.
 10. Explain routing data: the app uses real OSRM-compatible road distances and source-reported OpenStreetMap/Nominatim places.
 11. Preview the number of directed measurements required.
 12. Explain the Genetic Algorithm parameters: population, generations, crossover, mutation, tournament size, elitism, and seed.

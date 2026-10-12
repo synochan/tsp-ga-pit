@@ -2,7 +2,7 @@
 
 This project is a complete Python application for a university Genetic Algorithm route-optimization assignment in Cagayan de Oro City, Philippines. It lets a user choose one temporary starting point, select real GA destinations, build a directed road-distance matrix, run a Genetic Algorithm to choose the visit order, compare it with nearest neighbor, validate the route, visualize it with an animated path, and export reports.
 
-The start is fixed during one optimization run. The chromosome contains only selected destination IDs, for example `[C, A, D, B]`, and the complete closed tour is `START -> C -> A -> D -> B -> START`. At least two destinations are required so the Genetic Algorithm has a meaningful ordering problem.
+The start is fixed during one optimization run. The chromosome contains only selected destination IDs, for example `[C, A, D, B]`, and the complete closed tour is `START -> C -> A -> D -> B -> START`. One destination is enough for a valid closed tour, while two or more destinations make the ordering problem more meaningful.
 
 There is no separate `END` selector in the current version. The selected `START` is also the final return point, which keeps the project aligned with the classic closed-tour TSP requirement.
 
@@ -114,7 +114,7 @@ Tests do not require internet access. Routing-client tests use mocked responses.
 1. Open the Streamlit app.
 2. In `1. Start`, choose `START` from loaded real locations, click the map, search, or enter coordinates.
 3. In `2. GA Destinations`, click `Find Real Destinations From OpenStreetMap`.
-4. Review the loaded candidates and select at least two GA destinations. These selected places are the genes in the GA chromosome.
+4. Review the loaded candidates and select one or more GA destinations. These selected places are the genes in the GA chromosome.
 5. In `3. Run GA`, click `Run Genetic Algorithm`.
 6. Review the validation result, route distance, nearest-neighbor comparison, exact small-instance reference when available, weighted graph, convergence graph, and animated map. The displayed route must start at `START`, visit every selected destination once, and return to `START`.
 7. In `4. Export`, download or save the report files.

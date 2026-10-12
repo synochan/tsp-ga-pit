@@ -24,8 +24,8 @@ def main() -> None:
     locations = load_locations_csv(dataset)
     start = Location("START", "Cagayan de Oro City Center", "Default CLI start", 8.475, 124.645, "User/demo configuration")
     selected = locations[: min(8, len(locations))]
-    if len(selected) < 2:
-        print("The saved real dataset needs at least two destinations.")
+    if len(selected) < 1:
+        print("The saved real dataset needs at least one destination.")
         return
     matrix, _ = OSRMDistanceProvider(OSRMRoutingClient(DEFAULT_ROUTING)).build_matrix([start] + selected)
     ids = [location.location_id for location in selected]

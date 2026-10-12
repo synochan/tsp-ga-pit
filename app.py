@@ -180,7 +180,7 @@ def _create_report(result, validation, selected, start, matrix, baseline, exact,
 
 st.set_page_config(page_title="Cagayan de Oro TSP GA", layout="wide")
 st.title("Real-Data TSP Route Optimizer for Cagayan de Oro")
-st.caption("Pick one START, select at least two GA destinations, then let the Genetic Algorithm build a closed tour that returns to START.")
+st.caption("Pick one START, select one or more GA destinations, then let the Genetic Algorithm build a closed tour that returns to START.")
 
 if "locations" not in st.session_state:
     st.session_state.locations = _load_real_locations()
@@ -210,12 +210,12 @@ with st.sidebar:
 
 start_done = st.session_state.start is not None
 destinations_done = len(st.session_state.locations) >= 2
-selection_done = len(st.session_state.selected_ids) >= 2
+selection_done = len(_selected_locations()) >= 1
 st.progress((int(start_done) + int(destinations_done) + int(selection_done)) / 3)
 st.write(
     f"Workflow: {'START selected' if start_done else 'choose START'} -> "
     f"{'real destinations loaded' if destinations_done else 'load real destinations'} -> "
-    f"{'GA destinations selected' if selection_done else 'select at least 2 GA destinations'} -> "
+    f"{'GA destinations selected' if selection_done else 'select at least 1 GA destination'} -> "
     "return to START"
 )
 
@@ -303,7 +303,7 @@ with tabs[0]:
 
 with tabs[1]:
     st.subheader("Select GA Destinations")
-    st.info("These blue markers are the chromosome genes. Select at least two real places so the Genetic Algorithm can optimize the closed tour from START back to START.")
+    st.info("These blue markers are the chromosome genes. Select one or more real places so the Genetic Algorithm can optimize the closed tour from START back to START.")
     center_source = st.radio("Discovery center", ["Use START location", "Use Cagayan de Oro default center"], horizontal=True)
     if center_source == "Use START location" and st.session_state.start:
         center_lat = st.session_state.start.latitude
@@ -512,6 +512,7 @@ with tabs[2]:
             st.success("Route validation passed: the route starts at START, visits selected stops once, and returns to START.")
         else:
             st.error("Route validation failed: " + "; ".join(validation.errors))
+            st.warning("Verified route map, convergence display, and exports are disabled until validation passes.")
         metrics = st.columns(4)
         metrics[0].metric("Best route distance", f"{result.best_distance:.3f} km")
         metrics[1].metric("Nearest-neighbor distance", f"{baseline[1]:.3f} km")
@@ -534,6 +535,8 @@ with tabs[2]:
         st.write("Nearest-neighbor route:", " -> ".join(baseline[0]))
         if exact:
             st.write("Exact route:", " -> ".join(exact[0]))
+        if not validation.is_valid:
+            st.stop()
         route_edge_check, route_total_check_km = build_route_edge_check(result.best_route, matrix)
         st.write(f"Independent edge-weight recalculation: {route_total_check_km:.3f} km")
         with st.expander("Assignment evidence: graph model, weights, and route check"):
@@ -568,6 +571,9 @@ with tabs[3]:
         st.info("Run the Genetic Algorithm before exporting results.")
     else:
         result, validation, baseline, _, exact, selected, start, cache_hit, _, _ = st.session_state.last_result
+        if not validation.is_valid:
+            st.error("Exports are disabled because the last route failed validation: " + "; ".join(validation.errors))
+            st.stop()
         matrix = st.session_state.last_matrix
         report = _create_report(result, validation, selected, start, matrix, baseline, exact, cache_hit)
         tables = report["assignment_tables"]

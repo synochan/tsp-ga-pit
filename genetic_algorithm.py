@@ -57,7 +57,7 @@ def route_distance(
     total = 0.0
     for from_id, to_id in zip(route, route[1:]):
         measurement = matrix.get((from_id, to_id))
-        if measurement is None or not math.isfinite(measurement.distance_km):
+        if measurement is None or not math.isfinite(measurement.distance_km) or measurement.distance_km < 0:
             raise GeneticAlgorithmError(f"Missing or invalid distance for {from_id} -> {to_id}")
         total += measurement.distance_km
     return total

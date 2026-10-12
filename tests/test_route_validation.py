@@ -70,6 +70,14 @@ def test_missing_distance_fails():
     assert any("Missing or invalid distance" in error for error in result.errors)
 
 
+def test_invalid_matrix_distance_fails():
+    route_matrix = matrix()
+    route_matrix[("B", "START")] = m("B", "START", -3)
+    result = validate_round_trip(["START", "A", "B", "START"], "START", ["A", "B"], route_matrix)
+    assert not result.is_valid
+    assert any("Missing or invalid distance" in error for error in result.errors)
+
+
 def test_total_mismatch_fails():
     result = validate_round_trip(["START", "A", "B", "START"], "START", ["A", "B"], matrix(), 99)
     assert not result.is_valid
