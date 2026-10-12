@@ -16,9 +16,10 @@ Use these talking points for a 10-15 minute recorded demonstration. Do not prese
 12. Explain the Genetic Algorithm parameters: population, generations, crossover, mutation, tournament size, elitism, and seed.
 13. Run an optimization.
 14. Show that the route starts at `START`, visits every selected GA destination exactly once, and returns to `START`.
-15. Compare the GA best-found distance with nearest neighbor.
-16. Show the convergence graph and explain best-so-far tracking.
-17. Show the animated map path and distinguish START, intermediate destinations, the return leg, and route line. If road geometry is unavailable, mention that the dashed line is illustrative.
-18. Export the JSON report, ordered route CSV, distance matrix, and text summary.
-19. Discuss limitations: approximate GA result, public provider limits, asymmetric road distances, incomplete routing, and dataset verification.
-20. Mention future improvements: verified field collection, provider replacement, richer road geometry display, and parameter experiments.
+15. Open the assignment evidence expander and show the labeled vertex table, directed distance matrix, and route edge-by-edge recalculation.
+16. Compare the GA best-found distance with nearest neighbor.
+17. Show the convergence graph and explain best-so-far tracking.
+18. Show the animated map path and distinguish START, intermediate destinations, the return leg, and route line. If road geometry is unavailable, mention that the dashed line is illustrative.
+19. Export the JSON report, ordered route CSV, assignment vertex table, assignment directed edge table, assignment weight matrix, route recalculation CSV, and assignment evidence Markdown.
+20. Discuss limitations: approximate GA result, public provider limits, asymmetric road distances, incomplete routing, and dataset verification.
+21. Mention future improvements: verified field collection, provider replacement, richer road geometry display, and parameter experiments.

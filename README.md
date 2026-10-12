@@ -28,6 +28,18 @@ Exact enumeration grows factorially as destinations increase. A Genetic Algorith
 
 Different random seeds and parameter choices may produce different best-found routes.
 
+## Assignment Deliverables Covered
+
+The assignment file asks for a real-life TSP application, graph model, weighted data table, Python execution, output verification, and a conclusion about optimality. This project supports those requirements directly:
+
+- Real-life application: route planning over selected Cagayan de Oro locations.
+- Vertices: `START` plus every selected destination.
+- Edges: complete directed road-routing measurements between every pair of selected vertices.
+- Weights: road distance in kilometers from OSRM-compatible routing data.
+- Labeled graph evidence: the app exports `assignment_vertices.csv`, `assignment_directed_edges.csv`, and `assignment_weight_matrix_km.csv`.
+- Verification evidence: the app exports `route_edge_recalculation.csv`, which independently adds the best-route edge weights and checks the reported total.
+- Optimality statement: the GA is approximate; brute force is only used as a small-instance reference when the selected destination count is within the configured limit.
+
 ## Real Data Sources
 
 The app is real-data-first. It discovers candidate destinations from OpenStreetMap through Overpass, searches place names through Nominatim when requested, and calculates directed road distances with an OSRM-compatible routing API. It stores routing results in a local SQLite cache so changing GA parameters does not re-request the same road-distance matrix.
@@ -38,6 +50,7 @@ These external services may receive the queried coordinates or place names. Resp
 
 - `app.py`: Streamlit UI.
 - `main.py`: command-line run using a previously saved real discovered dataset.
+- `assignment_artifacts.py`: assignment evidence tables and Markdown summary helpers.
 - `genetic_algorithm.py`: GA, nearest neighbor, and optional brute-force exact reference.
 - `routing_client.py`: OSRM-compatible table and route geometry client with cache.
 - `distance_provider.py`: OSRM distance provider.
@@ -47,6 +60,7 @@ These external services may receive the queried coordinates or place names. Resp
 - `route_validation.py`: independent route verification.
 - `map_visualization.py`: Folium map.
 - `graph_visualization.py`: convergence plot and optional graph helper.
+- `ASSIGNMENT_CHECKLIST.md`: quick map from assignment requirements to project files and exports.
 - `tests/`: pytest tests with mocked routing responses, so tests do not depend on a live public API.
 
 ## Windows Setup
@@ -120,6 +134,11 @@ The app can download:
 - ordered route CSV;
 - selected location dataset CSV;
 - distance matrix CSV;
+- assignment vertex table CSV;
+- assignment directed edge table CSV;
+- assignment distance matrix CSV;
+- route edge recalculation CSV;
+- assignment evidence Markdown;
 - convergence history CSV;
 - plain-text summary.
 

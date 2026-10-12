@@ -7,6 +7,13 @@ import pandas as pd
 import streamlit as st
 from streamlit_folium import st_folium
 
+from assignment_artifacts import (
+    build_assignment_evidence_markdown,
+    build_directed_edge_table,
+    build_route_edge_check,
+    build_vertex_table,
+    build_weight_matrix_table,
+)
 from config import DATA_DIR, DEFAULT_DISCOVERY, DEFAULT_ROUTING, DEFAULT_STUDY_AREA, OUTPUT_DIR, RoutingSettings, ensure_directories
 from data_loader import load_locations_csv, save_distance_matrix_csv, save_locations_csv, validate_coordinate
 from discovery import CATEGORY_FILTERS, DiscoveryError, OverpassDiscoveryClient
@@ -117,20 +124,40 @@ def _ordered_locations(start: Location, destinations: list[Location], route: lis
     return [by_id[location_id] for location_id in route if location_id in by_id]
 
 
+def _assignment_tables(start: Location, selected: list[Location], matrix):
+    nodes = [start] + selected
+    return {
+        "vertices": build_vertex_table(start, selected),
+        "directed_edges": build_directed_edge_table(nodes, matrix),
+        "weight_matrix_km": build_weight_matrix_table(nodes, matrix),
+    }
+
+
 def _create_report(result, validation, selected, start, matrix, baseline, exact, cached):
+    tables = _assignment_tables(start, selected, matrix)
+    route_edge_check, route_total_check_km = build_route_edge_check(result.best_route, matrix)
     return {
         "generated_at": utc_now_iso(),
         "data_mode": "REAL_OSM_OSRM_DATA",
         "route_model": "closed_tour_start_to_destinations_to_start",
+        "problem_context": {
+            "application": "Closed-tour route planning in Cagayan de Oro City",
+            "objective": "Minimize total directed road distance in kilometers",
+            "graph_type": "Complete directed weighted graph over START and selected destinations",
+            "algorithm": "Genetic Algorithm for Traveling Salesperson Problem",
+        },
         "routing_cache_hit": cached,
         "start": start.as_dict(),
         "selected_destinations": [loc.as_dict() for loc in selected],
         "ga_parameters": result.parameters.__dict__,
         "best_found_route": result.best_route,
         "best_found_distance_km": result.best_distance,
+        "independent_route_total_check_km": route_total_check_km,
+        "route_edge_recalculation": route_edge_check,
         "validation": validation.__dict__,
         "nearest_neighbor": {"route": baseline[0], "distance_km": baseline[1]},
         "exact_reference": None if exact is None else {"route": exact[0], "distance_km": exact[1]},
+        "assignment_tables": tables,
         "distance_measurements": [measurement.as_dict() for measurement in matrix.values()],
         "attribution": "Locations, map tiles, and routing data are derived from OpenStreetMap contributors through the configured Overpass, Nominatim, and OSRM-compatible services.",
     }
@@ -462,6 +489,16 @@ with tabs[2]:
         if exact:
             st.info(f"Exact small-instance reference: {exact[1]:.3f} km")
         st.write("Best-found route:", " -> ".join(result.best_route))
+        route_edge_check, route_total_check_km = build_route_edge_check(result.best_route, st.session_state.last_matrix)
+        st.write(f"Independent edge-weight recalculation: {route_total_check_km:.3f} km")
+        with st.expander("Assignment evidence: graph model, weights, and route check"):
+            nodes = [start] + selected
+            st.write("Vertex labels and source details")
+            st.dataframe(pd.DataFrame(build_vertex_table(start, selected)), use_container_width=True)
+            st.write("Directed distance matrix in kilometers")
+            st.dataframe(pd.DataFrame(build_weight_matrix_table(nodes, st.session_state.last_matrix)), use_container_width=True)
+            st.write("Best-route edge-by-edge recalculation")
+            st.dataframe(pd.DataFrame(route_edge_check), use_container_width=True)
         st.pyplot(plot_convergence(result.history))
         if geometry_warning:
             st.warning(geometry_warning)
@@ -483,12 +520,28 @@ with tabs[3]:
         result, validation, baseline, _, exact, selected, start, cache_hit, _, _ = st.session_state.last_result
         matrix = st.session_state.last_matrix
         report = _create_report(result, validation, selected, start, matrix, baseline, exact, cache_hit)
+        tables = report["assignment_tables"]
+        route_edge_check = report["route_edge_recalculation"]
+        evidence_md = build_assignment_evidence_markdown(
+            start,
+            selected,
+            result,
+            validation,
+            baseline,
+            exact,
+            report["independent_route_total_check_km"],
+        )
         st.download_button("Download route report JSON", json.dumps(report, indent=2), "route_report.json", "application/json")
         ordered = pd.DataFrame({"visit_order": range(len(result.best_route)), "location_id": result.best_route})
         st.download_button("Download ordered route CSV", ordered.to_csv(index=False), "ordered_route.csv", "text/csv")
         st.download_button("Download selected locations CSV", _location_df([start] + selected).to_csv(index=False), "selected_locations.csv", "text/csv")
         matrix_df = pd.DataFrame([measurement.as_dict() for measurement in matrix.values()])
         st.download_button("Download distance matrix CSV", matrix_df.to_csv(index=False), "distance_matrix.csv", "text/csv")
+        st.download_button("Download assignment vertex table CSV", pd.DataFrame(tables["vertices"]).to_csv(index=False), "assignment_vertices.csv", "text/csv")
+        st.download_button("Download assignment edge table CSV", pd.DataFrame(tables["directed_edges"]).to_csv(index=False), "assignment_directed_edges.csv", "text/csv")
+        st.download_button("Download assignment weight matrix CSV", pd.DataFrame(tables["weight_matrix_km"]).to_csv(index=False), "assignment_weight_matrix_km.csv", "text/csv")
+        st.download_button("Download route recalculation CSV", pd.DataFrame(route_edge_check).to_csv(index=False), "route_edge_recalculation.csv", "text/csv")
+        st.download_button("Download assignment evidence Markdown", evidence_md, "assignment_evidence.md", "text/markdown")
         history_df = pd.DataFrame({"generation": range(len(result.history)), "best_distance_km": result.history})
         st.download_button("Download convergence CSV", history_df.to_csv(index=False), "convergence_history.csv", "text/csv")
         summary = f"""TSP Genetic Algorithm Route Summary
@@ -496,6 +549,7 @@ Data mode: REAL_OSM_OSRM_DATA
 Route model: closed tour, START -> selected destinations -> START
 Route: {' -> '.join(result.best_route)}
 Best-found distance: {result.best_distance:.3f} km
+Independent recalculation: {report["independent_route_total_check_km"]:.3f} km
 Nearest-neighbor distance: {baseline[1]:.3f} km
 Validation: {'PASS' if validation.is_valid else 'FAIL'}
 Generated at: {utc_now_iso()}
@@ -504,7 +558,12 @@ Generated at: {utc_now_iso()}
         if st.button("Save exports to output folder"):
             save_locations_csv([start] + selected, OUTPUT_DIR / "selected_locations.csv")
             save_distance_matrix_csv(matrix, OUTPUT_DIR / "distance_matrix.csv")
+            pd.DataFrame(tables["vertices"]).to_csv(OUTPUT_DIR / "assignment_vertices.csv", index=False)
+            pd.DataFrame(tables["directed_edges"]).to_csv(OUTPUT_DIR / "assignment_directed_edges.csv", index=False)
+            pd.DataFrame(tables["weight_matrix_km"]).to_csv(OUTPUT_DIR / "assignment_weight_matrix_km.csv", index=False)
+            pd.DataFrame(route_edge_check).to_csv(OUTPUT_DIR / "route_edge_recalculation.csv", index=False)
             (OUTPUT_DIR / "route_report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+            (OUTPUT_DIR / "assignment_evidence.md").write_text(evidence_md, encoding="utf-8")
             (OUTPUT_DIR / "route_summary.txt").write_text(summary, encoding="utf-8")
             st.success(f"Saved files in {OUTPUT_DIR}")
 

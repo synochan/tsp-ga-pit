@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import json
+
+import pandas as pd
+
+from assignment_artifacts import build_directed_edge_table, build_route_edge_check, build_vertex_table, build_weight_matrix_table
 from config import DATA_DIR, DEFAULT_ROUTING, ensure_directories
-from data_loader import load_locations_csv
+from data_loader import load_locations_csv, save_distance_matrix_csv, save_locations_csv
 from distance_provider import OSRMDistanceProvider
 from genetic_algorithm import nearest_neighbor, run_genetic_algorithm
-from models import GAParameters, Location
+from models import GAParameters, Location, utc_now_iso
 from route_validation import validate_round_trip
 from routing_client import OSRMRoutingClient
 
@@ -26,10 +31,34 @@ def main() -> None:
     baseline = nearest_neighbor("START", ids, matrix)
     result = run_genetic_algorithm("START", ids, matrix, GAParameters())
     validation = validate_round_trip(result.best_route, "START", ids, matrix, result.best_distance)
+    route_edge_check, route_total_check_km = build_route_edge_check(result.best_route, matrix)
     print("Route:", " -> ".join(result.best_route))
     print(f"GA best-found distance: {result.best_distance:.3f} km")
+    print(f"Independent recalculation: {route_total_check_km:.3f} km")
     print(f"Nearest-neighbor distance: {baseline[1]:.3f} km")
     print("Validation:", "PASS" if validation.is_valid else validation.errors)
+
+    output_dir = DATA_DIR.parent / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    nodes = [start] + selected
+    save_locations_csv(nodes, output_dir / "selected_locations.csv")
+    save_distance_matrix_csv(matrix, output_dir / "distance_matrix.csv")
+    pd.DataFrame(build_vertex_table(start, selected)).to_csv(output_dir / "assignment_vertices.csv", index=False)
+    pd.DataFrame(build_directed_edge_table(nodes, matrix)).to_csv(output_dir / "assignment_directed_edges.csv", index=False)
+    pd.DataFrame(build_weight_matrix_table(nodes, matrix)).to_csv(output_dir / "assignment_weight_matrix_km.csv", index=False)
+    pd.DataFrame(route_edge_check).to_csv(output_dir / "route_edge_recalculation.csv", index=False)
+    report = {
+        "generated_at": utc_now_iso(),
+        "route_model": "closed_tour_start_to_destinations_to_start",
+        "objective": "Minimize total directed road distance in kilometers",
+        "best_found_route": result.best_route,
+        "best_found_distance_km": result.best_distance,
+        "independent_route_total_check_km": route_total_check_km,
+        "validation": validation.__dict__,
+        "nearest_neighbor": {"route": baseline[0], "distance_km": baseline[1]},
+    }
+    (output_dir / "route_report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+    print(f"Assignment evidence files saved to {output_dir}")
 
 
 if __name__ == "__main__":
