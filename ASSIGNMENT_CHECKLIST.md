@@ -32,6 +32,7 @@ After running the app and clicking `Save exports to output folder`, use:
 - `output/assignment_directed_edges.csv`
 - `output/assignment_weight_matrix_km.csv`
 - `output/route_edge_recalculation.csv`
+- `output/weighted_graph.png`
 - `output/route_report.json`
 - `output/assignment_evidence.md`
 - `output/route_summary.txt`

@@ -49,6 +49,21 @@ def test_missing_return_to_start_fails():
     assert any("return" in error.lower() for error in result.errors)
 
 
+def test_wrong_ending_location_fails():
+    result = validate_round_trip(["START", "A", "B", "C"], "START", ["A", "B"], matrix())
+    assert not result.is_valid
+    assert any("return" in error.lower() for error in result.errors)
+
+
+def test_unexpected_destination_fails():
+    route_matrix = matrix()
+    route_matrix[("B", "C")] = m("B", "C", 1)
+    route_matrix[("C", "START")] = m("C", "START", 1)
+    result = validate_round_trip(["START", "A", "B", "C", "START"], "START", ["A", "B"], route_matrix)
+    assert not result.is_valid
+    assert any("Unselected destinations" in error for error in result.errors)
+
+
 def test_missing_distance_fails():
     result = validate_round_trip(["START", "B", "A", "START"], "START", ["A", "B"], {})
     assert not result.is_valid
@@ -59,3 +74,8 @@ def test_total_mismatch_fails():
     result = validate_round_trip(["START", "A", "B", "START"], "START", ["A", "B"], matrix(), 99)
     assert not result.is_valid
     assert any("Reported total" in error for error in result.errors)
+
+
+def test_total_within_tolerance_passes():
+    result = validate_round_trip(["START", "A", "B", "START"], "START", ["A", "B"], matrix(), 6.0000001, tolerance_km=1e-5)
+    assert result.is_valid

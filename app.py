@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import time
+from io import BytesIO
 
 import pandas as pd
 import streamlit as st
@@ -20,7 +21,7 @@ from discovery import CATEGORY_FILTERS, DiscoveryError, OverpassDiscoveryClient
 from distance_provider import OSRMDistanceProvider
 from genetic_algorithm import brute_force_exact, nearest_neighbor, run_genetic_algorithm
 from geocoding import GeocodingError, NominatimGeocoder, discover_places_by_category
-from graph_visualization import plot_convergence
+from graph_visualization import plot_convergence, plot_weighted_graph
 from map_visualization import build_route_map
 from models import GAParameters, Location, utc_now_iso
 from route_validation import validate_round_trip
@@ -113,9 +114,23 @@ def _set_start(location: Location) -> None:
     st.session_state.pop("last_result", None)
 
 
+def _same_physical_location(left: Location | None, right: Location) -> bool:
+    if left is None:
+        return False
+    same_coordinate = round(left.latitude, 6) == round(right.latitude, 6) and round(left.longitude, 6) == round(right.longitude, 6)
+    same_name = left.location_name.strip().lower() == right.location_name.strip().lower()
+    return same_coordinate and same_name
+
+
+def _set_start_from_loaded_location(location: Location) -> None:
+    _set_start(_copy_location_with_id(location, "START"))
+    st.session_state.selected_ids = [loc_id for loc_id in st.session_state.selected_ids if loc_id != location.location_id]
+
+
 def _selected_locations() -> list[Location]:
     selected_ids = st.session_state.get("selected_ids", [])
-    return [loc for loc in st.session_state.locations if loc.location_id in selected_ids]
+    start = st.session_state.get("start")
+    return [loc for loc in st.session_state.locations if loc.location_id in selected_ids and not _same_physical_location(start, loc)]
 
 
 def _ordered_locations(start: Location, destinations: list[Location], route: list[str]) -> list[Location]:
@@ -209,6 +224,18 @@ tabs = st.tabs(["1. Start", "2. GA Destinations", "3. Run GA", "4. Export"])
 with tabs[0]:
     st.subheader("Choose START")
     st.info("Click inside the blue Cagayan de Oro study box, search a place, or enter coordinates. The final route returns to this same START.")
+    if st.session_state.locations:
+        loaded_start = st.selectbox(
+            "Or choose START from loaded real locations",
+            st.session_state.locations,
+            index=None,
+            placeholder="Select one loaded location as START",
+            format_func=lambda item: f"{item.location_name} - {item.address_or_area}",
+        )
+        if loaded_start and st.button("Use Loaded Location As START"):
+            _set_start_from_loaded_location(loaded_start)
+            st.success(f"START selected from loaded locations: {loaded_start.location_name}. It was removed from GA destinations.")
+            st.rerun()
     start_map = build_route_map(
         st.session_state.start,
         _selected_locations(),
@@ -385,7 +412,10 @@ with tabs[1]:
     locations = st.session_state.locations
     if locations:
         st.write(f"{len(locations)} candidate GA destinations loaded.")
-        valid_ids = {loc.location_id for loc in locations}
+        selectable_locations = [loc for loc in locations if not _same_physical_location(st.session_state.start, loc)]
+        if st.session_state.start and len(selectable_locations) < len(locations):
+            st.caption("The loaded location currently used as START is excluded from GA destination genes.")
+        valid_ids = {loc.location_id for loc in selectable_locations}
         st.session_state.selected_ids = [loc_id for loc_id in st.session_state.selected_ids if loc_id in valid_ids]
         selector_df = pd.DataFrame(
             [
@@ -398,7 +428,7 @@ with tabs[1]:
                     "Longitude": loc.longitude,
                     "location_id": loc.location_id,
                 }
-                for loc in locations
+                for loc in selectable_locations
             ]
         )
         edited_df = st.data_editor(
@@ -416,7 +446,7 @@ with tabs[1]:
         select_cols = st.columns(2)
         with select_cols[0]:
             if st.button("Select first 10"):
-                st.session_state.selected_ids = [loc.location_id for loc in locations[: min(10, len(locations))]]
+                st.session_state.selected_ids = [loc.location_id for loc in selectable_locations[: min(10, len(selectable_locations))]]
                 st.rerun()
         with select_cols[1]:
             if st.button("Clear GA selection"):
@@ -427,7 +457,7 @@ with tabs[1]:
         if len(selected) >= 2:
             st.success(f"{len(selected)} GA destinations selected. Next: Run GA.")
         else:
-            st.warning("Select at least two GA destinations. With fewer than two, there is no meaningful GA ordering problem.")
+            st.warning("Select at least one GA destination. More destinations make the GA ordering problem more meaningful.")
     else:
         st.warning("No real destinations loaded yet. Click the discovery button above.")
 
@@ -437,8 +467,8 @@ with tabs[2]:
     start = st.session_state.start
     if not start:
         st.warning("Step 1 is not complete: choose a START first.")
-    elif len(selected) < 2:
-        st.warning("Step 2 is not complete: select at least two GA destinations.")
+    elif len(selected) < 1:
+        st.warning("Step 2 is not complete: select at least one GA destination.")
     else:
         node_count = len(selected) + 1
         measurement_count = node_count * (node_count - 1)
@@ -474,6 +504,10 @@ with tabs[2]:
 
     if "last_result" in st.session_state:
         result, validation, baseline, baseline_runtime, exact, selected, start, cache_hit, road_geometries, geometry_warning = st.session_state.last_result
+        matrix = st.session_state.last_matrix
+        destination_ids = [loc.location_id for loc in selected]
+        baseline_validation = validate_round_trip(baseline[0], "START", destination_ids, matrix, baseline[1])
+        exact_validation = None if exact is None else validate_round_trip(exact[0], "START", destination_ids, matrix, exact[1])
         if validation.is_valid:
             st.success("Route validation passed: the route starts at START, visits selected stops once, and returns to START.")
         else:
@@ -487,16 +521,32 @@ with tabs[2]:
         pct = "N/A" if baseline[1] == 0 else f"{(diff / baseline[1]) * 100:.2f}%"
         st.write({"absolute_difference_km": round(diff, 6), "percent_difference_vs_baseline": pct, "baseline_runtime_seconds": round(baseline_runtime, 6)})
         if exact:
-            st.info(f"Exact small-instance reference: {exact[1]:.3f} km")
+            exact_gap = result.best_distance - exact[1]
+            exact_gap_pct = "N/A" if exact[1] == 0 else f"{(exact_gap / exact[1]) * 100:.2f}%"
+            st.info(f"Exact small-instance reference: {exact[1]:.3f} km. GA gap: {exact_gap:.3f} km ({exact_gap_pct}).")
+        else:
+            st.info("Exact brute-force reference skipped because the selected destination count is above the configured small-instance limit.")
+        if not baseline_validation.is_valid:
+            st.warning("Nearest-neighbor validation failed: " + "; ".join(baseline_validation.errors))
+        if exact_validation and not exact_validation.is_valid:
+            st.warning("Exact-reference validation failed: " + "; ".join(exact_validation.errors))
         st.write("Best-found route:", " -> ".join(result.best_route))
-        route_edge_check, route_total_check_km = build_route_edge_check(result.best_route, st.session_state.last_matrix)
+        st.write("Nearest-neighbor route:", " -> ".join(baseline[0]))
+        if exact:
+            st.write("Exact route:", " -> ".join(exact[0]))
+        route_edge_check, route_total_check_km = build_route_edge_check(result.best_route, matrix)
         st.write(f"Independent edge-weight recalculation: {route_total_check_km:.3f} km")
         with st.expander("Assignment evidence: graph model, weights, and route check"):
             nodes = [start] + selected
             st.write("Vertex labels and source details")
             st.dataframe(pd.DataFrame(build_vertex_table(start, selected)), use_container_width=True)
             st.write("Directed distance matrix in kilometers")
-            st.dataframe(pd.DataFrame(build_weight_matrix_table(nodes, st.session_state.last_matrix)), use_container_width=True)
+            st.dataframe(pd.DataFrame(build_weight_matrix_table(nodes, matrix)), use_container_width=True)
+            graph_fig = plot_weighted_graph(nodes, matrix)
+            st.pyplot(graph_fig)
+            graph_buffer = BytesIO()
+            graph_fig.savefig(graph_buffer, format="png", dpi=180, bbox_inches="tight")
+            st.download_button("Download weighted graph PNG", graph_buffer.getvalue(), "weighted_graph.png", "image/png")
             st.write("Best-route edge-by-edge recalculation")
             st.dataframe(pd.DataFrame(route_edge_check), use_container_width=True)
         st.pyplot(plot_convergence(result.history))
@@ -542,6 +592,10 @@ with tabs[3]:
         st.download_button("Download assignment weight matrix CSV", pd.DataFrame(tables["weight_matrix_km"]).to_csv(index=False), "assignment_weight_matrix_km.csv", "text/csv")
         st.download_button("Download route recalculation CSV", pd.DataFrame(route_edge_check).to_csv(index=False), "route_edge_recalculation.csv", "text/csv")
         st.download_button("Download assignment evidence Markdown", evidence_md, "assignment_evidence.md", "text/markdown")
+        graph_fig = plot_weighted_graph([start] + selected, matrix)
+        graph_buffer = BytesIO()
+        graph_fig.savefig(graph_buffer, format="png", dpi=180, bbox_inches="tight")
+        st.download_button("Download weighted graph PNG", graph_buffer.getvalue(), "weighted_graph.png", "image/png")
         history_df = pd.DataFrame({"generation": range(len(result.history)), "best_distance_km": result.history})
         st.download_button("Download convergence CSV", history_df.to_csv(index=False), "convergence_history.csv", "text/csv")
         summary = f"""TSP Genetic Algorithm Route Summary
@@ -562,6 +616,7 @@ Generated at: {utc_now_iso()}
             pd.DataFrame(tables["directed_edges"]).to_csv(OUTPUT_DIR / "assignment_directed_edges.csv", index=False)
             pd.DataFrame(tables["weight_matrix_km"]).to_csv(OUTPUT_DIR / "assignment_weight_matrix_km.csv", index=False)
             pd.DataFrame(route_edge_check).to_csv(OUTPUT_DIR / "route_edge_recalculation.csv", index=False)
+            (OUTPUT_DIR / "weighted_graph.png").write_bytes(graph_buffer.getvalue())
             (OUTPUT_DIR / "route_report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
             (OUTPUT_DIR / "assignment_evidence.md").write_text(evidence_md, encoding="utf-8")
             (OUTPUT_DIR / "route_summary.txt").write_text(summary, encoding="utf-8")

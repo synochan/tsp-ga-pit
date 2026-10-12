@@ -13,8 +13,8 @@ class GeneticAlgorithmError(ValueError):
 
 
 def validate_parameters(params: GAParameters, destination_count: int) -> None:
-    if destination_count < 2:
-        raise GeneticAlgorithmError("At least two destinations are required.")
+    if destination_count < 1:
+        raise GeneticAlgorithmError("At least one destination is required.")
     if params.population_size <= 0:
         raise GeneticAlgorithmError("Population size must be positive.")
     if params.generations < 0:
@@ -51,6 +51,8 @@ def route_distance(
     start_id: str,
     matrix: dict[tuple[str, str], RouteMeasurement],
 ) -> float:
+    if not chromosome:
+        return 0.0
     route = [start_id] + chromosome + [start_id]
     total = 0.0
     for from_id, to_id in zip(route, route[1:]):
@@ -156,6 +158,8 @@ def nearest_neighbor(
     matrix: dict[tuple[str, str], RouteMeasurement],
 ) -> tuple[list[str], float]:
     validate_distance_matrix(start_id, destination_ids, matrix)
+    if not destination_ids:
+        return [start_id, start_id], 0.0
     unvisited = set(destination_ids)
     route = [start_id]
     current = start_id
@@ -179,6 +183,8 @@ def brute_force_exact(
 ) -> tuple[list[str], float] | None:
     if len(destination_ids) > max_destinations:
         return None
+    if not destination_ids:
+        return [start_id, start_id], 0.0
     validate_distance_matrix(start_id, destination_ids, matrix)
     best_route: list[str] | None = None
     best_distance = math.inf

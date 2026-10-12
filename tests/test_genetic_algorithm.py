@@ -98,7 +98,15 @@ def test_ga_handles_small_valid_instance_and_validates_route():
 def test_ga_rejects_invalid_input():
     _, destinations, matrix = fixture_problem()
     with pytest.raises(GeneticAlgorithmError):
-        run_genetic_algorithm("START", [destinations[0].location_id], matrix, GAParameters())
+        run_genetic_algorithm("START", [], matrix, GAParameters())
+
+
+def test_ga_handles_one_destination_closed_tour():
+    _, destinations, matrix = fixture_problem()
+    ids = [destinations[0].location_id]
+    result = run_genetic_algorithm("START", ids, matrix, GAParameters(population_size=4, generations=3))
+    assert result.best_route == ["START", ids[0], "START"]
+    assert result.best_distance == matrix[("START", ids[0])].distance_km + matrix[(ids[0], "START")].distance_km
 
 
 def test_nearest_neighbor_returns_closed_tour():
@@ -120,6 +128,26 @@ def test_route_distance_includes_return_to_start_leg():
     assert route_distance(["A", "B"], "START", matrix) == 10
 
 
+def test_route_distance_empty_chromosome_is_zero():
+    assert route_distance([], "START", {}) == 0.0
+
+
+def test_invalid_matrix_distance_is_rejected():
+    _, destinations, matrix = fixture_problem()
+    ids = [loc.location_id for loc in destinations[:2]]
+    matrix[("START", ids[0])] = RouteMeasurement("START", ids[0], float("nan"), 1, "mock", utc_now_iso(), "mock", "")
+    with pytest.raises(GeneticAlgorithmError):
+        run_genetic_algorithm("START", ids, matrix, GAParameters(population_size=4, generations=3))
+
+
+def test_negative_matrix_distance_is_rejected():
+    _, destinations, matrix = fixture_problem()
+    ids = [loc.location_id for loc in destinations[:2]]
+    matrix[("START", ids[0])] = RouteMeasurement("START", ids[0], -1, 1, "mock", utc_now_iso(), "mock", "")
+    with pytest.raises(GeneticAlgorithmError):
+        run_genetic_algorithm("START", ids, matrix, GAParameters(population_size=4, generations=3))
+
+
 def test_ga_returns_closed_tour():
     _, destinations, matrix = fixture_problem()
     ids = [loc.location_id for loc in destinations[:3]]
@@ -139,3 +167,28 @@ def test_brute_force_exact_returns_closed_tour():
     assert route[-1] == "START"
     assert set(route[1:-1]) == set(ids)
     assert distance > 0
+
+
+def test_brute_force_exact_finds_expected_small_optimum():
+    ids = ["A", "B", "C"]
+    distances = {
+        ("START", "A"): 1,
+        ("START", "B"): 9,
+        ("START", "C"): 9,
+        ("A", "B"): 1,
+        ("A", "C"): 9,
+        ("B", "A"): 9,
+        ("B", "C"): 1,
+        ("C", "A"): 9,
+        ("C", "B"): 9,
+        ("A", "START"): 9,
+        ("B", "START"): 9,
+        ("C", "START"): 1,
+    }
+    matrix = {
+        edge: RouteMeasurement(edge[0], edge[1], distance, 1, "mock", utc_now_iso(), "mock", "")
+        for edge, distance in distances.items()
+    }
+    route, distance = brute_force_exact("START", ids, matrix)
+    assert route == ["START", "A", "B", "C", "START"]
+    assert distance == 4

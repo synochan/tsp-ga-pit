@@ -10,6 +10,14 @@ There is no separate `END` selector in the current version. The selected `START`
 
 The route must start at one location, visit every selected destination exactly once, and return to the same start while minimizing total distance. This is the classic closed-tour Traveling Salesperson Problem. Road distances can be asymmetric because one-way roads and routing restrictions may make A-to-B different from B-to-A.
 
+For selected start `s` and destination order `v1, v2, ..., vn`, the optimized objective is:
+
+```text
+D = d(s, v1) + d(v1, v2) + ... + d(vn-1, vn) + d(vn, s)
+```
+
+All displayed and exported distances use kilometers.
+
 ## Why Use A Genetic Algorithm
 
 Exact enumeration grows factorially as destinations increase. A Genetic Algorithm is suitable for a demonstration because it searches many route permutations without trying every possible tour. It returns a best-found approximate solution, not a guaranteed global optimum unless an exact reference is separately computed for that small instance.
@@ -36,7 +44,7 @@ The assignment file asks for a real-life TSP application, graph model, weighted 
 - Vertices: `START` plus every selected destination.
 - Edges: complete directed road-routing measurements between every pair of selected vertices.
 - Weights: road distance in kilometers from OSRM-compatible routing data.
-- Labeled graph evidence: the app exports `assignment_vertices.csv`, `assignment_directed_edges.csv`, and `assignment_weight_matrix_km.csv`.
+- Labeled graph evidence: the app displays a directed weighted graph and exports `weighted_graph.png`, `assignment_vertices.csv`, `assignment_directed_edges.csv`, and `assignment_weight_matrix_km.csv`.
 - Verification evidence: the app exports `route_edge_recalculation.csv`, which independently adds the best-route edge weights and checks the reported total.
 - Optimality statement: the GA is approximate; brute force is only used as a small-instance reference when the selected destination count is within the configured limit.
 
@@ -104,11 +112,11 @@ Tests do not require internet access. Routing-client tests use mocked responses.
 ## Real-World Dataset Workflow
 
 1. Open the Streamlit app.
-2. In `1. Start`, click the map to set `START`. You can also search or enter coordinates.
+2. In `1. Start`, choose `START` from loaded real locations, click the map, search, or enter coordinates.
 3. In `2. GA Destinations`, click `Find Real Destinations From OpenStreetMap`.
 4. Review the loaded candidates and select at least two GA destinations. These selected places are the genes in the GA chromosome.
 5. In `3. Run GA`, click `Run Genetic Algorithm`.
-6. Review the validation result, route distance, nearest-neighbor comparison, convergence graph, and animated map. The displayed route must start at `START`, visit every selected destination once, and return to `START`.
+6. Review the validation result, route distance, nearest-neighbor comparison, exact small-instance reference when available, weighted graph, convergence graph, and animated map. The displayed route must start at `START`, visit every selected destination once, and return to `START`.
 7. In `4. Export`, download or save the report files.
 
 Do not treat OpenStreetMap POIs as independently verified real-world business records. If a field is unavailable, the app leaves it blank or marks the location as source-reported/unverified.
@@ -139,6 +147,7 @@ The app can download:
 - assignment distance matrix CSV;
 - route edge recalculation CSV;
 - assignment evidence Markdown;
+- weighted graph PNG;
 - convergence history CSV;
 - plain-text summary.
 

@@ -9,6 +9,7 @@ from config import DATA_DIR, DEFAULT_ROUTING, ensure_directories
 from data_loader import load_locations_csv, save_distance_matrix_csv, save_locations_csv
 from distance_provider import OSRMDistanceProvider
 from genetic_algorithm import nearest_neighbor, run_genetic_algorithm
+from graph_visualization import plot_weighted_graph
 from models import GAParameters, Location, utc_now_iso
 from route_validation import validate_round_trip
 from routing_client import OSRMRoutingClient
@@ -47,6 +48,7 @@ def main() -> None:
     pd.DataFrame(build_directed_edge_table(nodes, matrix)).to_csv(output_dir / "assignment_directed_edges.csv", index=False)
     pd.DataFrame(build_weight_matrix_table(nodes, matrix)).to_csv(output_dir / "assignment_weight_matrix_km.csv", index=False)
     pd.DataFrame(route_edge_check).to_csv(output_dir / "route_edge_recalculation.csv", index=False)
+    plot_weighted_graph(nodes, matrix).savefig(output_dir / "weighted_graph.png", dpi=180, bbox_inches="tight")
     report = {
         "generated_at": utc_now_iso(),
         "route_model": "closed_tour_start_to_destinations_to_start",

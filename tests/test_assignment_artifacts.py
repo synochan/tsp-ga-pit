@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from assignment_artifacts import build_route_edge_check, build_vertex_table, build_weight_matrix_table
+from graph_visualization import plot_weighted_graph
 from models import Location, RouteMeasurement, utc_now_iso
 
 
@@ -47,3 +48,19 @@ def test_route_edge_check_recalculates_total():
 
     assert total == 5.0
     assert rows[-1]["running_total_km"] == 5.0
+
+
+def test_weighted_graph_plot_renders_directed_graph():
+    nodes = [
+        Location("START", "Start", "", 8.1, 124.1),
+        Location("A", "A", "", 8.2, 124.2),
+    ]
+    matrix = {
+        ("START", "A"): m("START", "A", 2.0),
+        ("A", "START"): m("A", "START", 3.0),
+    }
+
+    fig = plot_weighted_graph(nodes, matrix)
+
+    assert fig.axes
+    assert "Directed Weighted TSP Graph" in fig.axes[0].get_title()
